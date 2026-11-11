@@ -1,0 +1,53 @@
+name: Build Sideload Fix Dylib
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Compile iOS arm64 Dylibs
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compile Dylibs
+        run: |
+          mkdir -p output
+          SDK_PATH=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "Using iOS SDK at: $SDK_PATH"
+
+          # 1. Compile FixTelegram.dylib
+          xcrun -sdk iphoneos clang -arch arm64 -dynamiclib -fobjc-arc \
+            -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=14.0 \
+            -framework Foundation -framework Security \
+            -install_name @rpath/FixTelegram.dylib \
+            FixTelegram.m fishhook.c \
+            -o output/FixTelegram.dylib
+
+          # 2. Compile SideloadFix.dylib
+          xcrun -sdk iphoneos clang -arch arm64 -dynamiclib -fobjc-arc \
+            -isysroot "$SDK_PATH" \
+            -miphoneos-version-min=14.0 \
+            -framework Foundation -framework Security \
+            -install_name @rpath/SideloadFix.dylib \
+            FixTelegram.m fishhook.c \
+            -o output/SideloadFix.dylib
+
+      - name: Inspect Binaries
+        run: |
+          echo "=== File Information ==="
+          file output/*.dylib
+          echo "=== Load Commands ==="
+          otool -L output/FixTelegram.dylib
+          otool -L output/SideloadFix.dylib
+
+      - name: Upload Dylib Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TelegramSideloadFix-dylibs
+          path: output/*.dylib
+          if-no-files-found: error
